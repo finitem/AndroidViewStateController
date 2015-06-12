@@ -72,10 +72,12 @@ interface TransitionActions {
 }
 
 
-fun makeTransition(viewState: ViewState): Transition {
+fun makeTransition(viewStates: List<ViewState>): Transition {
     val components = ArrayList<TransitionComponent>()
-    for (goal in viewState.goals) {
-        components.add(TransitionComponent(viewState.view, goal.property, evaluator = goal.evaluator, values = goal.goalValue))
+    for (viewState in viewStates) {
+        for (goal in viewState.goals) {
+            components.add(TransitionComponent(viewState.view, goal.property, evaluator = goal.evaluator, values = goal.goalValue))
+        }
     }
     return Transition(components)
 }
@@ -116,7 +118,7 @@ fun reverseTransition(transition: Transition): Transition {
     );
 }
 
-public class ViewStateController(val name: String, val defaultStateName: String, val states: HashMap<String, ViewState>) {
+public class ViewStateController(val name: String, val defaultStateName: String, val states: HashMap<String, List<ViewState>>) {
 
     class MissingDefaultStateException(val controllerName: String) : RuntimeException("{$controllerName} was created with a default state that is not in its set of states")
 

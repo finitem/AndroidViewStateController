@@ -17,32 +17,53 @@ public class LaunchActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_launch)
         val hello = findViewById(R.id.hello)
+        val goodbye = findViewById(R.id.goodbye)
         val controller = ViewStateController(
                 "TestController",
                 "zero",
                 HashMap(mapOf(
-                        "zero" to ViewState(
-                                hello,
-                                View.VISIBLE,
-                                setOf(
-                                        ViewPropertyGoal("translationX", 40f),
-                                        ViewPropertyGoal("translationY", 100f)
+                        "zero" to listOf(
+                                ViewState(
+                                        hello,
+                                        View.VISIBLE,
+                                        setOf(
+                                                ViewPropertyGoal("translationX", 40f),
+                                                ViewPropertyGoal("translationY", 100f)
+                                        )
+                                ),
+                                ViewState(
+                                        goodbye,
+                                        View.VISIBLE,
+                                        setOf(
+                                                ViewPropertyGoal("rotation", 30f)
+                                        )
                                 )
                         ),
-                        "one" to ViewState(
-                                hello,
-                                View.VISIBLE,
-                                setOf(
-                                        ViewPropertyGoal("alpha", .2f),
-                                        ViewPropertyGoal("translationY", 50f)
+                        "one" to listOf(
+                                ViewState(
+                                        hello,
+                                        View.VISIBLE,
+                                        setOf(
+                                                ViewPropertyGoal("alpha", .2f),
+                                                ViewPropertyGoal("translationY", 50f)
+                                        )
+                                ),
+                                ViewState(
+                                        goodbye,
+                                        View.VISIBLE,
+                                        setOf(
+                                                ViewPropertyGoal("rotation", 0f)
+                                        )
                                 )
                         ),
-                        "two" to ViewState(
-                                hello,
-                                View.GONE,
-                                setOf(
-                                        ViewPropertyGoal("alpha", 1f),
-                                        ViewPropertyGoal("translationX", 0f)
+                        "two" to listOf(
+                                ViewState(
+                                        hello,
+                                        View.GONE,
+                                        setOf(
+                                                ViewPropertyGoal("alpha", 1f),
+                                                ViewPropertyGoal("translationX", 0f)
+                                        )
                                 )
                         )
                 ))
