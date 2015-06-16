@@ -15,6 +15,13 @@ import java.util.LinkedList
 val defaultInterpolator = AccelerateDecelerateInterpolator()
 val defaultDuration = 3500L
 
+data class TransitionWrapper(
+        val fromState: String,
+        val toState: String,
+        val transition: Transition,
+        val reversible: Boolean
+)
+
 data class TransitionComponent(
         val target: View,
         val property: String,
@@ -119,7 +126,6 @@ fun reverseTransition(transition: Transition): Transition {
 }
 
 public class ViewStateController(val name: String, val defaultStateName: String, val states: HashMap<String, List<ViewState>>) {
-
     class MissingDefaultStateException(val controllerName: String) : RuntimeException("{$controllerName} was created with a default state that is not in its set of states")
 
     ///TODO: Make each state be able to modify multiple views [important, also simple]
@@ -136,7 +142,10 @@ public class ViewStateController(val name: String, val defaultStateName: String,
         Collections.sort(indices)
         val size = states.size()
         for (i in 0..(size - 1)) {
-            transitions.add(ArrayList(arrayOfNulls<Transition?>(size).asList()))
+            this.transitions.add(ArrayList(arrayOfNulls<Transition?>(size).asList()))
+        }
+        for (transition in transitions) {
+            addTransition(transition)
         }
 
         if (defaultStateName !in states.keySet()) {
@@ -144,27 +153,16 @@ public class ViewStateController(val name: String, val defaultStateName: String,
         }
     }
 
-    public fun addTransition(transition: Transition, fromState: String, toState: String, reversible: Boolean) {
-        val fromIndex = getIndexOfState(fromState)
-        val toIndex = getIndexOfState(toState)
-        transitions.get(fromIndex).set(toIndex, transition)
-        if (reversible) {
-            transitions.get(toIndex).set(fromIndex, reverseTransition(transition))
+    fun addTransition(wrapper: TransitionWrapper) {
+        val fromIndex = getIndexOfState(wrapper.fromState)
+        val toIndex = getIndexOfState(wrapper.toState)
+        transitions.get(fromIndex).set(toIndex, wrapper.transition)
+        if (wrapper.reversible) {
+            transitions.get(toIndex).set(fromIndex, reverseTransition(wrapper.transition))
         }
     }
 
     fun getIndexOfState(state: String) = Collections.binarySearch(indices, state)
-
-    fun getTransition(fromState: String, toState: String): Transition {
-        val fromIndex = getIndexOfState(fromState)
-        val toIndex = getIndexOfState(toState)
-        var transition: Transition? = transitions[fromIndex][toIndex]
-        if (transition == null) {
-            transition = makeTransition(states[indices[toIndex]])
-            transitions[fromIndex][toIndex] = transition
-        }
-        return transition
-    }
 
     public fun show(stateName: String? = null) {
         enqueue(stateName ?: defaultStateName)
@@ -206,6 +204,16 @@ public class ViewStateController(val name: String, val defaultStateName: String,
         transitioning = true
     }
 
+    fun getTransition(fromState: String, toState: String): Transition {
+        val fromIndex = getIndexOfState(fromState)
+        val toIndex = getIndexOfState(toState)
+        var transition: Transition? = transitions[fromIndex][toIndex]
+        if (transition == null) {
+            transition = makeTransition(states[indices[toIndex]])
+            transitions[fromIndex][toIndex] = transition
+        }
+        return transition
+    }
     fun makeAnimator(transition: Transition): AnimatorSet {
         val set = AnimatorSet()
         set.setDuration(transition.duration)
