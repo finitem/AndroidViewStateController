@@ -10,7 +10,6 @@ import com.merrillogic.viewcomposition.ViewState
 import com.merrillogic.viewcomposition.ViewStateController
 import java.util.HashMap
 
-
 public class LaunchActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -21,6 +20,7 @@ public class LaunchActivity : AppCompatActivity() {
         val controller = ViewStateController(
                 "TestController",
                 "zero",
+                listOf(listOf("zero"), listOf("one", "two")),
                 HashMap(mapOf(
                         "zero" to listOf(
                                 ViewState(
@@ -73,6 +73,12 @@ public class LaunchActivity : AppCompatActivity() {
         controller.show("zero")
         controller.show("one")
         controller.show("two")
+        controller.back()
+        //Should now be showing zero
+
+        controller.show("zero")
+        //Shouldn't switch to zero from zero, should know it's there.
+
         controller.show("two")
         controller.show("zero")
         //TODO: Tests.

@@ -11,6 +11,7 @@ import java.util.ArrayList
 import java.util.Collections
 import java.util.HashMap
 import java.util.LinkedList
+import java.util.concurrent.ConcurrentLinkedDeque
 
 val defaultInterpolator = AccelerateDecelerateInterpolator()
 val defaultDuration = 3500L
@@ -37,7 +38,6 @@ data class TransitionComponent(
         vararg val values: Any
 )
 
-
 data class Transition(
         val components: ArrayList<TransitionComponent>,
         val duration: Long = defaultDuration,
@@ -54,6 +54,11 @@ data class Transition(
         }
 )
 
+data class ViewCompositionState(
+        public val name: String,
+        public val viewStates: List<ViewState>,
+        public val group: Int = -1
+)
 
 //Should the name be stored in the ViewState class at all? Or is that irrelevant?
 data class ViewState(
@@ -74,9 +79,9 @@ interface TransitionActions {
     fun after()
 }
 
-fun makeTransition(viewStates: List<ViewState>): Transition {
+fun makeTransition(viewStateComposition: ViewCompositionState): Transition {
     val components = ArrayList<TransitionComponent>()
-    for (viewState in viewStates) {
+    for (viewState in viewStateComposition.viewStates) {
         for (goal in viewState.goals) {
             components.add(TransitionComponent(viewState.view, goal.property, evaluator = goal.evaluator, values = goal.goalValue))
         }
@@ -120,13 +125,16 @@ fun reverseTransition(transition: Transition): Transition {
     );
 }
 
-public class ViewStateController(val name: String, defaultStateName: String, val states: HashMap<String, List<ViewState>>, transitions: List<TransitionWrapper> = ArrayList<TransitionWrapper>()) {
+public class ViewStateController(val name: String, defaultStateName: String, stackRules: List<List<String>>, states: HashMap<String, List<ViewState>>, transitions: List<TransitionWrapper> = ArrayList<TransitionWrapper>()) {
+
     class MissingDefaultStateException(val controllerName: String) : RuntimeException("{$controllerName} was created with a default state that is not in its set of states")
 
     ///TODO: Make each state be able to modify multiple views [important, also simple]
     val transitions = ArrayList<ArrayList<Transition?>>()
     val indices = ArrayList<String>()
     val transitionQueue = LinkedList<Pair<String, Animator>>()
+    val backStack = ConcurrentLinkedDeque<String>()
+    val states = HashMap<String, ViewCompositionState>()
 
     var currentState: String = defaultStateName
     var transitioning = false
@@ -145,6 +153,13 @@ public class ViewStateController(val name: String, defaultStateName: String, val
 
         if (defaultStateName !in states.keySet()) {
             throw MissingDefaultStateException(name)
+        }
+
+        //Set up states
+        for (i in 0..(stackRules.size() - 1)) {
+            for (stateName in stackRules[i]) {
+                this.states[stateName] = ViewCompositionState(stateName, states[stateName], i)
+            }
         }
 
         //Tiny bit of code duplication here
@@ -168,6 +183,24 @@ public class ViewStateController(val name: String, defaultStateName: String, val
 
     public fun show(stateName: String) {
         enqueue(stateName)
+    }
+
+    public synchronized fun back(): Boolean {
+        //Even if the backstack is empty, I would still like to cancel going forward.
+
+        //Prevent us from starting any new transitions by clearing it
+        transitionQueue.clear()
+        if (transitioning) {
+            //Reverse current animation
+        }
+        if (backStack.isNotEmpty()) {
+            backStack.pop()
+            show(backStack.peek())
+            return true
+        } else {
+            //We've got no business dealing with this, return false
+            return false
+        }
     }
 
     //TODO: Transitions between A and B that are left to default shouldn't just use B's to default - they need to be a combo of the two ViewStates.
@@ -194,6 +227,7 @@ public class ViewStateController(val name: String, defaultStateName: String, val
     synchronized fun next() {
         if (!transitioning && transitionQueue.isNotEmpty()) {
             val pair = transitionQueue.pollFirst()
+
             transitionStarted(pair.first)
             pair.second.start()
         }
@@ -205,8 +239,13 @@ public class ViewStateController(val name: String, defaultStateName: String, val
     }
 
     fun transitionStarted(state: String) {
+        //TODO: Decide ordering of this, and if it should be synchronized
         currentState = state
         transitioning = true
+        //TODO: Include jumping back to a state if it's in the backstack somewhere?
+        if (states[state].group !in listOf(-1, states[currentState]?.group ?: -1)) {
+            backStack.add(state)
+        }
     }
 
     fun getIndexOfState(state: String) = Collections.binarySearch(indices, state)
