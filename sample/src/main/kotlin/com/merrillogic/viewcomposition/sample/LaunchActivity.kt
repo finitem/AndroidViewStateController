@@ -68,12 +68,14 @@ public class LaunchActivity : AppCompatActivity() {
                         )
                 ))
         )
+        //For testing purposes, should really implement some form of infitinitely repeating animation,
+        // then interrupt it midstream and whatnot.
         controller.show("zero")
         controller.show("one")
         controller.show("two")
-        controller.show("one")
         controller.show("two")
         controller.show("zero")
+        //TODO: Tests.
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
