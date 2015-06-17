@@ -162,14 +162,7 @@ public class ViewStateController(val name: String, defaultStateName: String, sta
             }
         }
 
-        //Tiny bit of code duplication here
-        transitionQueue.add(
-                Pair(defaultStateName,
-                        makeAnimator(
-                                getTransition(
-                                        defaultStateName,
-                                        defaultStateName))))
-        next()
+        enqueue(defaultStateName, defaultStateName)
     }
 
     fun addTransition(wrapper: TransitionWrapper) {
@@ -181,17 +174,20 @@ public class ViewStateController(val name: String, defaultStateName: String, sta
         }
     }
 
-    public fun show(stateName: String) {
-        enqueue(stateName)
+    public synchronized fun show(stateName: String) {
+        val prevState =
+                if (transitionQueue.isEmpty()) currentState
+                else transitionQueue.peekLast().first
+        if (!prevState.equals(stateName)) {
+            enqueue(prevState, stateName)
+        }
     }
 
     public synchronized fun back(): Boolean {
-        //Even if the backstack is empty, I would still like to cancel going forward.
-
         //Prevent us from starting any new transitions by clearing it
         transitionQueue.clear()
         if (transitioning) {
-            //Reverse current animation
+            //TODO: Reverse current animation
         }
         if (backStack.isNotEmpty()) {
             backStack.pop()
@@ -206,21 +202,14 @@ public class ViewStateController(val name: String, defaultStateName: String, sta
     //TODO: Transitions between A and B that are left to default shouldn't just use B's to default - they need to be a combo of the two ViewStates.
     //TODO: more official Lazy transition generation [so that it's never "Transition?"]
 
-    fun enqueue(toState: String) {
+    synchronized fun enqueue(fromState: String, toState: String) {
         //TODO: Get this in a bg thread that unthreads when it calls next.
-        synchronized(transitionQueue) {
-            val prevState =
-                    if (transitionQueue.isEmpty()) currentState
-                    else transitionQueue.peekLast().first
-            if (!prevState.equals(toState)) {
-                transitionQueue.add(
-                        Pair(toState,
-                                makeAnimator(
-                                        getTransition(
-                                                prevState,
-                                                toState))))
-            }
-        }
+        transitionQueue.add(
+                Pair(toState,
+                        makeAnimator(
+                                getTransition(
+                                        fromState,
+                                        toState))))
         next()
     }
 
