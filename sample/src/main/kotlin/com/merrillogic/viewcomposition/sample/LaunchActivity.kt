@@ -10,7 +10,6 @@ import com.merrillogic.viewcomposition.ViewState
 import com.merrillogic.viewcomposition.ViewStateController
 import java.util.HashMap
 
-
 public class LaunchActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -21,6 +20,7 @@ public class LaunchActivity : AppCompatActivity() {
         val controller = ViewStateController(
                 "TestController",
                 "zero",
+                listOf(listOf("zero"), listOf("one", "two")),
                 HashMap(mapOf(
                         "zero" to listOf(
                                 ViewState(
@@ -68,12 +68,20 @@ public class LaunchActivity : AppCompatActivity() {
                         )
                 ))
         )
+        //For testing purposes, should really implement some form of infitinitely repeating animation,
+        // then interrupt it midstream and whatnot.
         controller.show("zero")
         controller.show("one")
         controller.show("two")
-        controller.show("one")
+        controller.back()
+        //Should now be showing zero
+
+        controller.show("zero")
+        //Shouldn't switch to zero from zero, should know it's there.
+
         controller.show("two")
         controller.show("zero")
+        //TODO: Tests.
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {

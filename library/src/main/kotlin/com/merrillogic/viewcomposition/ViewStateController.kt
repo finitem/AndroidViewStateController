@@ -11,9 +11,17 @@ import java.util.ArrayList
 import java.util.Collections
 import java.util.HashMap
 import java.util.LinkedList
+import java.util.concurrent.ConcurrentLinkedDeque
 
 val defaultInterpolator = AccelerateDecelerateInterpolator()
 val defaultDuration = 3500L
+
+data class TransitionWrapper(
+        val fromState: String,
+        val toState: String,
+        val transition: Transition,
+        val reversible: Boolean
+)
 
 data class TransitionComponent(
         val target: View,
@@ -29,7 +37,6 @@ data class TransitionComponent(
         //TODO: assert that varargs is not empty?
         vararg val values: Any
 )
-
 
 data class Transition(
         val components: ArrayList<TransitionComponent>,
@@ -47,6 +54,11 @@ data class Transition(
         }
 )
 
+data class ViewCompositionState(
+        public val name: String,
+        public val viewStates: List<ViewState>,
+        public val group: Int = -1
+)
 
 //Should the name be stored in the ViewState class at all? Or is that irrelevant?
 data class ViewState(
@@ -55,15 +67,11 @@ data class ViewState(
         public val goals: Set<ViewPropertyGoal>
 )
 
-//TODO: Allow for evaluators and/or non-float things? Oh wait, this is JUST the end state - no need for an evaluator. - that's not true, this isn't just the end state, we've also got a "generateDefault" thing goin' on here. we may want the evaluator for that.
-//Right now we're assuming a basic animation for the defaults - more advanced things can be manually constructed for real transitions.
-// TODO? Add ability to make chained animations and whatnot by describing amount of time that the animation takes, for better default animations? No, wait, yeah, that's bad. THIS IS A STATE, OCCUPYING A SINGLE POINT IN TIME. The evaluator is ONLY for the default animation. And even then, perhaps the creation of a default can be shunted off somewhere else that can handle that.
 data class ViewPropertyGoal(
         val property: String,
         val goalValue: Any,
         val evaluator: TypeEvaluator<Any>? = null
 )
-
 
 interface TransitionActions {
     fun before()
@@ -71,10 +79,9 @@ interface TransitionActions {
     fun after()
 }
 
-
-fun makeTransition(viewStates: List<ViewState>): Transition {
+fun makeTransition(viewStateComposition: ViewCompositionState): Transition {
     val components = ArrayList<TransitionComponent>()
-    for (viewState in viewStates) {
+    for (viewState in viewStateComposition.viewStates) {
         for (goal in viewState.goals) {
             components.add(TransitionComponent(viewState.view, goal.property, evaluator = goal.evaluator, values = goal.goalValue))
         }
@@ -118,7 +125,7 @@ fun reverseTransition(transition: Transition): Transition {
     );
 }
 
-public class ViewStateController(val name: String, val defaultStateName: String, val states: HashMap<String, List<ViewState>>) {
+public class ViewStateController(val name: String, defaultStateName: String, stackRules: List<List<String>>, states: HashMap<String, List<ViewState>>, transitions: List<TransitionWrapper> = ArrayList<TransitionWrapper>()) {
 
     class MissingDefaultStateException(val controllerName: String) : RuntimeException("{$controllerName} was created with a default state that is not in its set of states")
 
@@ -126,8 +133,10 @@ public class ViewStateController(val name: String, val defaultStateName: String,
     val transitions = ArrayList<ArrayList<Transition?>>()
     val indices = ArrayList<String>()
     val transitionQueue = LinkedList<Pair<String, Animator>>()
+    val backStack = ConcurrentLinkedDeque<String>()
+    val states = HashMap<String, ViewCompositionState>()
 
-    var currentState: String? = null
+    var currentState: String = defaultStateName
     var transitioning = false
 
     init {
@@ -136,53 +145,81 @@ public class ViewStateController(val name: String, val defaultStateName: String,
         Collections.sort(indices)
         val size = states.size()
         for (i in 0..(size - 1)) {
-            transitions.add(ArrayList(arrayOfNulls<Transition?>(size).asList()))
+            this.transitions.add(ArrayList(arrayOfNulls<Transition?>(size).asList()))
+        }
+        for (transition in transitions) {
+            addTransition(transition)
         }
 
         if (defaultStateName !in states.keySet()) {
             throw MissingDefaultStateException(name)
         }
+
+        //Set up states
+        for (i in 0..(stackRules.size() - 1)) {
+            for (stateName in stackRules[i]) {
+                this.states[stateName] = ViewCompositionState(stateName, states[stateName], i)
+            }
+        }
+
+        //Tiny bit of code duplication here
+        transitionQueue.add(
+                Pair(defaultStateName,
+                        makeAnimator(
+                                getTransition(
+                                        defaultStateName,
+                                        defaultStateName))))
+        next()
     }
 
-    public fun addTransition(transition: Transition, fromState: String, toState: String, reversible: Boolean) {
-        val fromIndex = getIndexOfState(fromState)
-        val toIndex = getIndexOfState(toState)
-        transitions.get(fromIndex).set(toIndex, transition)
-        if (reversible) {
-            transitions.get(toIndex).set(fromIndex, reverseTransition(transition))
+    fun addTransition(wrapper: TransitionWrapper) {
+        val fromIndex = getIndexOfState(wrapper.fromState)
+        val toIndex = getIndexOfState(wrapper.toState)
+        transitions.get(fromIndex).set(toIndex, wrapper.transition)
+        if (wrapper.reversible) {
+            transitions.get(toIndex).set(fromIndex, reverseTransition(wrapper.transition))
         }
     }
 
-    fun getIndexOfState(state: String) = Collections.binarySearch(indices, state)
-
-    fun getTransition(fromState: String, toState: String): Transition {
-        val fromIndex = getIndexOfState(fromState)
-        val toIndex = getIndexOfState(toState)
-        var transition: Transition? = transitions[fromIndex][toIndex]
-        if (transition == null) {
-            transition = makeTransition(states[indices[toIndex]])
-            transitions[fromIndex][toIndex] = transition
-        }
-        return transition
+    public fun show(stateName: String) {
+        enqueue(stateName)
     }
 
-    public fun show(stateName: String? = null) {
-        enqueue(stateName ?: defaultStateName)
+    public synchronized fun back(): Boolean {
+        //Even if the backstack is empty, I would still like to cancel going forward.
+
+        //Prevent us from starting any new transitions by clearing it
+        transitionQueue.clear()
+        if (transitioning) {
+            //Reverse current animation
+        }
+        if (backStack.isNotEmpty()) {
+            backStack.pop()
+            show(backStack.peek())
+            return true
+        } else {
+            //We've got no business dealing with this, return false
+            return false
+        }
     }
 
     //TODO: Transitions between A and B that are left to default shouldn't just use B's to default - they need to be a combo of the two ViewStates.
+    //TODO: more official Lazy transition generation [so that it's never "Transition?"]
 
     fun enqueue(toState: String) {
         //TODO: Get this in a bg thread that unthreads when it calls next.
         synchronized(transitionQueue) {
-            transitionQueue.add(
-                    Pair(toState,
-                            makeAnimator(
-                                    getTransition(
-                                            if (transitionQueue.isEmpty())
-                                                currentState ?: defaultStateName
-                                            else transitionQueue.peekLast().first,
-                                            toState))))
+            val prevState =
+                    if (transitionQueue.isEmpty()) currentState
+                    else transitionQueue.peekLast().first
+            if (!prevState.equals(toState)) {
+                transitionQueue.add(
+                        Pair(toState,
+                                makeAnimator(
+                                        getTransition(
+                                                prevState,
+                                                toState))))
+            }
         }
         next()
     }
@@ -202,8 +239,26 @@ public class ViewStateController(val name: String, val defaultStateName: String,
     }
 
     fun transitionStarted(state: String) {
+        //TODO: Decide ordering of this, and if it should be synchronized
         currentState = state
         transitioning = true
+        //TODO: Include jumping back to a state if it's in the backstack somewhere?
+        if (states[state].group !in listOf(-1, states[currentState]?.group ?: -1)) {
+            backStack.add(state)
+        }
+    }
+
+    fun getIndexOfState(state: String) = Collections.binarySearch(indices, state)
+
+    fun getTransition(fromState: String, toState: String): Transition {
+        val fromIndex = getIndexOfState(fromState)
+        val toIndex = getIndexOfState(toState)
+        var transition: Transition? = transitions[fromIndex][toIndex]
+        if (transition == null) {
+            transition = makeTransition(states[indices[toIndex]])
+            transitions[fromIndex][toIndex] = transition
+        }
+        return transition
     }
 
     fun makeAnimator(transition: Transition): AnimatorSet {
