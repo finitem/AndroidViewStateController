@@ -125,6 +125,8 @@ fun reverseTransition(transition: Transition): Transition {
     );
 }
 
+data class BackStackItem(val stateName: String?, val childController: ViewStateController?)
+
 public class ViewStateController(val name: String, defaultStateName: String, stackRules: List<List<String>>, states: HashMap<String, List<ViewState>>, transitions: List<TransitionWrapper> = ArrayList<TransitionWrapper>()) {
 
     class MissingDefaultStateException(val controllerName: String) : RuntimeException("{$controllerName} was created with a default state that is not in its set of states")
@@ -133,11 +135,12 @@ public class ViewStateController(val name: String, defaultStateName: String, sta
     val transitions = ArrayList<ArrayList<Transition?>>()
     val indices = ArrayList<String>()
     val transitionQueue = LinkedList<Pair<String, Animator>>()
-    val backStack = ConcurrentLinkedDeque<String>()
+    val backStack = ConcurrentLinkedDeque<BackStackItem>()
     val states = HashMap<String, ViewCompositionState>()
 
     var currentState: String = defaultStateName
     var transitioning = false
+    public var parent: ViewStateController? = null
 
     init {
         //populate default transitions
@@ -190,8 +193,12 @@ public class ViewStateController(val name: String, defaultStateName: String, sta
             //TODO: Reverse current animation
         }
         if (backStack.isNotEmpty()) {
-            backStack.pop()
-            show(backStack.peek())
+            val topItem = backStack.pop()
+            topItem.childController?.back();
+            if (topItem.stateName != null) {
+                //TODO: Any good way of synchronizing with child transitions?
+                show(topItem.stateName)
+            }
             return true
         } else {
             //We've got no business dealing with this, return false
@@ -233,8 +240,14 @@ public class ViewStateController(val name: String, defaultStateName: String, sta
         transitioning = true
         //TODO: Include jumping back to a state if it's in the backstack somewhere?
         if (states[state].group !in listOf(-1, states[currentState]?.group ?: -1)) {
-            backStack.add(state)
+            backStack.add(BackStackItem(state, null))
         }
+    }
+
+    //TODO: Analyze synchronization
+    fun addChildBackStackItem(child: ViewStateController) {
+        //TODO: Can we figure out synchronous changes so that this can also show a certain state of its own?
+        backStack.add(BackStackItem(null, child))
     }
 
     fun getIndexOfState(state: String) = Collections.binarySearch(indices, state)
